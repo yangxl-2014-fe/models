@@ -14,8 +14,14 @@
 # limitations under the License.
 # ==============================================================================
 
-""" Offline data generation for the KITTI dataset."""
+""" Offline data generation for the KITTI dataset.
+wget https://raw.githubusercontent.com/mrharicot/monodepth/master/utils/kitti_archives_to_download.txt
+# https://github.com/mrharicot/monodepth/blob/master/utils/kitti_archives_to_download.txt
+wget -i kitti_archives_to_download.txt
+unzip "*.zip"
+"""
 
+import logging
 import os
 from absl import app
 from absl import flags
@@ -33,8 +39,18 @@ SEQ_LENGTH = 3
 WIDTH = 416
 HEIGHT = 128
 STEPSIZE = 1
-INPUT_DIR = '/usr/local/google/home/anelia/struct2depth/KITTI_FULL/kitti-raw-uncompressed'
-OUTPUT_DIR = '/usr/local/google/home/anelia/struct2depth/KITTI_procesed/'
+# INPUT_DIR = '/usr/local/google/home/anelia/struct2depth/KITTI_FULL/kitti-raw-uncompressed'
+# OUTPUT_DIR = '/usr/local/google/home/anelia/struct2depth/KITTI_procesed/'
+
+''' 
+# non-consecutive data
+INPUT_DIR = '/disk4t0/database/KITTI/Processed_ext'
+OUTPUT_DIR = '/disk4t0/database/KITTI/struct2depth_format/'
+'''
+
+# consecutive data
+INPUT_DIR = '/disk4t0/database/KITTI/KITTI_partial/'
+OUTPUT_DIR = '/disk4t0/database/KITTI/2011_09_26_struct2depth/'
 
 
 def get_line(file, start):
@@ -101,24 +117,51 @@ for d in glob.glob(INPUT_DIR + '/*/'):
             ct = 1
             seqname = d2.split('/')[-2] + subfolder.replace('image', '').replace('/data', '')
             if not os.path.exists(OUTPUT_DIR + seqname):
-                os.mkdir(OUTPUT_DIR + seqname)
+                # os.mkdir(OUTPUT_DIR + seqname)
+                os.makedirs(OUTPUT_DIR + seqname)
 
             calib_camera = calib_raw[0] if subfolder=='image_02/data' else calib_raw[1]
             folder = d2 + subfolder
             files = glob.glob(folder + '/*.png')
             files = [file for file in files if not 'disp' in file and not 'flip' in file and not 'seg' in file]
             files = sorted(files)
+
+            files_seg = glob.glob(folder + '/*.png')
+            files_seg = [file for file in files_seg if 'seg' in file]
+            files_seg = sorted(files_seg)
+
+            if len(files) != len(files_seg):
+                print('files:     {}'.format(len(files)))
+                print('files_seg: {}'.format(len(files_seg)))
+                raise ValueError
+
+            enable_debug = True
+            if enable_debug:
+                print('files: {}'.format(len(files)))
+                for item_f in files:
+                    print('  - {}'.format(item_f))
+                print('files_seg: {}'.format(len(files_seg)))
+                for item_f in files_seg:
+                    print('  - {}'.format(item_f))
+
             for i in range(SEQ_LENGTH, len(files)+1, STEPSIZE):
                 imgnum = str(ct).zfill(10)
                 if os.path.exists(OUTPUT_DIR + seqname + '/' + imgnum + '.png'):
                     ct+=1
                     continue
                 big_img = np.zeros(shape=(HEIGHT, WIDTH*SEQ_LENGTH, 3))
+                big_img_seg = np.zeros(shape=(HEIGHT, WIDTH * SEQ_LENGTH, 3))
                 wct = 0
 
                 for j in range(i-SEQ_LENGTH, i):  # Collect frames for this sample.
                     img = cv2.imread(files[j])
+                    img_seg = cv2.imread(files_seg[j])
                     ORIGINAL_HEIGHT, ORIGINAL_WIDTH, _ = img.shape
+
+                    if img.shape != img_seg.shape:
+                        print('img.shape:     {}'.format(img.shape))
+                        print('img_seg.shape: {}'.format(img_seg.shape))
+                        raise ValueError
 
                     zoom_x = WIDTH/ORIGINAL_WIDTH
                     zoom_y = HEIGHT/ORIGINAL_HEIGHT
@@ -134,8 +177,14 @@ for d in glob.glob(INPUT_DIR + '/*/'):
 
                     img = cv2.resize(img, (WIDTH, HEIGHT))
                     big_img[:,wct*WIDTH:(wct+1)*WIDTH] = img
+
+                    img_seg = cv2.resize(img_seg, (WIDTH, HEIGHT))
+                    big_img_seg[:, wct * WIDTH:(wct + 1) * WIDTH] = img_seg
+
                     wct+=1
                 cv2.imwrite(OUTPUT_DIR + seqname + '/' + imgnum + '.png', big_img)
+                cv2.imwrite(OUTPUT_DIR + seqname + '/' + imgnum + '-fseg.png', big_img_seg)
+
                 f = open(OUTPUT_DIR + seqname + '/' + imgnum + '_cam.txt', 'w')
                 f.write(calib_representation)
                 f.close()
