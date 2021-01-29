@@ -23,16 +23,19 @@ unzip "*.zip"
 
 import logging
 import os
+import os.path as osp
 from absl import app
 from absl import flags
 from absl import logging
 import numpy as np
 import cv2
 import os, glob
+import time
 
 import alignment
 from alignment import compute_overlap
 from alignment import align
+from color_print import ColorPrint
 
 
 SEQ_LENGTH = 3
@@ -42,15 +45,8 @@ STEPSIZE = 1
 # INPUT_DIR = '/usr/local/google/home/anelia/struct2depth/KITTI_FULL/kitti-raw-uncompressed'
 # OUTPUT_DIR = '/usr/local/google/home/anelia/struct2depth/KITTI_procesed/'
 
-''' 
-# non-consecutive data
-INPUT_DIR = '/disk4t0/database/KITTI/Processed_ext'
-OUTPUT_DIR = '/disk4t0/database/KITTI/struct2depth_format/'
-'''
-
-# consecutive data
-INPUT_DIR = '/disk4t0/database/KITTI/KITTI_partial/'
-OUTPUT_DIR = '/disk4t0/database/KITTI/2011_09_26_struct2depth/'
+INPUT_DIR = '/disk4t0/0-MonoDepth-Database/KITTI_MINI/'
+OUTPUT_DIR = '/disk4t0/0-MonoDepth-Database/KITTI_MINI_processed/'
 
 
 def get_line(file, start):
@@ -105,6 +101,9 @@ def run_all():
 if not OUTPUT_DIR.endswith('/'):
     OUTPUT_DIR = OUTPUT_DIR + '/'
 
+img_num_generated = 0
+time_beg = time.time()
+
 for d in glob.glob(INPUT_DIR + '/*/'):
     date = d.split('/')[-2]
     file_calibration = d + 'calib_cam_to_cam.txt'
@@ -137,12 +136,16 @@ for d in glob.glob(INPUT_DIR + '/*/'):
 
             enable_debug = True
             if enable_debug:
+                '''
                 print('files: {}'.format(len(files)))
                 for item_f in files:
                     print('  - {}'.format(item_f))
-                print('files_seg: {}'.format(len(files_seg)))
+                '''
+                data_dir, _ = osp.split(files_seg[0])
+                ColorPrint.print_warn('- process_dir: {}'.format(data_dir))
+                ColorPrint.print_warn('- files_seg:   {}'.format(len(files_seg)))
                 for item_f in files_seg:
-                    print('  - {}'.format(item_f))
+                    ColorPrint.print_info('  - {}'.format(item_f))
 
             for i in range(SEQ_LENGTH, len(files)+1, STEPSIZE):
                 imgnum = str(ct).zfill(10)
@@ -184,11 +187,18 @@ for d in glob.glob(INPUT_DIR + '/*/'):
                     wct+=1
                 cv2.imwrite(OUTPUT_DIR + seqname + '/' + imgnum + '.png', big_img)
                 cv2.imwrite(OUTPUT_DIR + seqname + '/' + imgnum + '-fseg.png', big_img_seg)
+                img_num_generated += 1
 
                 f = open(OUTPUT_DIR + seqname + '/' + imgnum + '_cam.txt', 'w')
                 f.write(calib_representation)
                 f.close()
                 ct+=1
+
+
+time_end = time.time()
+ColorPrint.print_warn('process {} images in total.'.format(img_num_generated))
+ColorPrint.print_warn('elapsed {} seconds.'.format(time_end - time_beg))
+
 
 def main(_):
   run_all()
